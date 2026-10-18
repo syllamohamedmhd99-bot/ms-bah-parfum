@@ -2,7 +2,7 @@
   "name": "ms-bah-parfum",
   "version": "1.0.0",
   "description": "MS BAH PARFUM — Application Windows 11 hors ligne de gestion commerciale et parfumerie",
-  "main": "dist-electron/main.js",
+  "main": "server/dist/server.js",
   "scripts": {
     "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "dev:server": "npm --prefix server run dev",
@@ -16,7 +16,7 @@
     "build:all": "npm run build:client && npm run build:server && npm run build:electron",
     "start": "node server/dist/server.js",
     "start:server": "node server/dist/server.js",
-    "start:electron": "electron .",
+    "start:electron": "electron dist-electron/main.js",
     "postinstall": "npm --prefix server install && npm --prefix client install",
     "dist:win": "npm run build:all && electron-builder --win --x64",
     "android:sync": "npm run build:client && npm --prefix client run cap:sync",
@@ -37,6 +37,9 @@
     "appId": "com.msbah.parfum",
     "productName": "MS BAH PARFUM",
     "copyright": "Copyright © 2026 MS BAH PARFUM",
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
     "npmRebuild": false,
     "directories": {
       "output": "release",
