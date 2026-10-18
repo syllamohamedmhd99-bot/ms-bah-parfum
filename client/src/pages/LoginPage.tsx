@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Lock, User, ArrowRight, ShieldCheck, CheckCircle2, Sparkles, Store, Smartphone } from 'lucide-react';
-import { api } from '../services/api.js';
+import { Lock, User, ArrowRight, ShieldCheck, CheckCircle2, Sparkles, Store, Smartphone, Settings, Globe, Wifi, X, Check } from 'lucide-react';
+import { api, getApiBaseUrl, setApiBaseUrl } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.js';
 import { useToast } from '../context/ToastContext.js';
 import { BoutiqueLogo } from '../components/BoutiqueLogo.js';
@@ -9,6 +9,8 @@ export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('admin123');
   const [loading, setLoading] = useState(false);
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState(getApiBaseUrl());
   const { login } = useAuth();
   const toast = useToast();
 
@@ -25,6 +27,36 @@ export const LoginPage: React.FC = () => {
       login(data.token, data.user);
       toast.success(`Bienvenue chez MS BAH PARFUM, ${data.user.fullName} !`);
     } catch (err: any) {
+      console.warn('Erreur connexion réseau au serveur:', err);
+
+      // Authentification de secours Hors-Ligne (si le serveur réseau n'est pas joignable)
+      const offlineAccounts: Record<string, { pass: string; user: any }> = {
+        admin: {
+          pass: 'admin123',
+          user: { id: 1, username: 'admin', fullName: 'Elhadj Seydou Diallo', role: 'admin' }
+        },
+        gerant: {
+          pass: 'gerant123',
+          user: { id: 2, username: 'gerant', fullName: 'Mamadou Alpha Barry', role: 'manager' }
+        },
+        caissier: {
+          pass: 'caissier123',
+          user: { id: 3, username: 'caissier', fullName: 'Fatoumata Binta Camara', role: 'cashier' }
+        },
+        stock: {
+          pass: 'stock123',
+          user: { id: 4, username: 'stock', fullName: 'Ibrahima Sory Soumah', role: 'stock_manager' }
+        }
+      };
+
+      const account = offlineAccounts[username.trim().toLowerCase()];
+      if (account && account.pass === password) {
+        const offlineToken = `offline_token_${Date.now()}_${account.user.id}`;
+        login(offlineToken, account.user);
+        toast.info(`Mode Hors-Ligne activé : Bienvenue, ${account.user.fullName} !`);
+        return;
+      }
+
       toast.error(err.message || 'Identifiants invalides.');
     } finally {
       setLoading(false);
@@ -34,6 +66,12 @@ export const LoginPage: React.FC = () => {
   const setQuickUser = (u: string, p: string) => {
     setUsername(u);
     setPassword(p);
+  };
+
+  const handleSaveServerUrl = () => {
+    setApiBaseUrl(serverUrlInput);
+    setShowServerModal(false);
+    toast.success('Adresse du serveur enregistrée avec succès !');
   };
 
   return (
@@ -184,8 +222,112 @@ export const LoginPage: React.FC = () => {
               <div className="text-[10px] text-[#64748B] mt-0.5">Marchandises & Entrées</div>
             </button>
           </div>
+
+          {/* Bouton de configuration du serveur */}
+          <div className="mt-4 pt-3 border-t border-[#E1E6E2] flex items-center justify-between text-xs">
+            <span className="text-[#64748B] text-[11px] truncate max-w-[200px]" title={getApiBaseUrl()}>
+              Serveur : <span className="font-mono text-[#176B52] font-semibold">{getApiBaseUrl()}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setServerUrlInput(getApiBaseUrl());
+                setShowServerModal(true);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#176B52] hover:underline"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Changer</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Modal de configuration du serveur */}
+      {showServerModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-[#E1E6E2] space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-[#E1E6E2] pb-3">
+              <div className="flex items-center gap-2 text-[#176B52] font-black">
+                <Globe className="w-5 h-5" />
+                <span className="text-base">Adresse du Serveur API</span>
+              </div>
+              <button
+                onClick={() => setShowServerModal(false)}
+                className="text-[#64748B] hover:text-[#1F2937] p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Pour connecter votre smartphone au serveur de caisse, sélectionnez une option ou entrez l'adresse :
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setServerUrlInput('http://172.20.10.2:5050/api')}
+                className="w-full flex items-center justify-between p-3 rounded-xl border border-[#E1E6E2] bg-[#F4F6F3] hover:bg-[#EBF4F0] hover:border-[#176B52] text-left transition"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Wifi className="w-4 h-4 text-[#176B52]" />
+                  <div>
+                    <div className="text-xs font-bold text-[#1F2937]">Mon PC en Wi-Fi direct</div>
+                    <div className="text-[11px] text-[#64748B] font-mono">http://172.20.10.2:5050/api</div>
+                  </div>
+                </div>
+                {serverUrlInput === 'http://172.20.10.2:5050/api' && <Check className="w-4 h-4 text-[#176B52]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setServerUrlInput('https://ms-bah-parfum-production.up.railway.app/api')}
+                className="w-full flex items-center justify-between p-3 rounded-xl border border-[#E1E6E2] bg-[#F4F6F3] hover:bg-[#EBF4F0] hover:border-[#176B52] text-left transition"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Globe className="w-4 h-4 text-[#176B52]" />
+                  <div>
+                    <div className="text-xs font-bold text-[#1F2937]">Railway Cloud (En Ligne 24/7)</div>
+                    <div className="text-[11px] text-[#64748B] font-mono">https://...up.railway.app/api</div>
+                  </div>
+                </div>
+                {serverUrlInput.includes('railway') && <Check className="w-4 h-4 text-[#176B52]" />}
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#1F2937] mb-1">
+                Adresse URL personnalisée :
+              </label>
+              <input
+                type="text"
+                value={serverUrlInput}
+                onChange={(e) => setServerUrlInput(e.target.value)}
+                placeholder="http://192.168.x.x:5050/api ou https://..."
+                className="w-full bg-[#F4F6F3] border border-[#E1E6E2] rounded-xl px-3.5 py-2 text-xs font-mono text-[#1F2937] focus:ring-2 focus:ring-[#176B52] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowServerModal(false)}
+                className="flex-1 px-4 py-2 text-xs font-bold text-[#64748B] bg-[#F4F6F3] rounded-xl hover:bg-[#E1E6E2]"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveServerUrl}
+                className="flex-1 px-4 py-2 text-xs font-bold text-white bg-[#176B52] rounded-xl hover:bg-[#0f4e3b] shadow-sm transition active:scale-95"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

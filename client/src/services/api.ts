@@ -4,9 +4,9 @@ export function getApiBaseUrl(): string {
     if (saved && saved.trim() !== '') {
       return saved.replace(/\/+$/, '');
     }
-    // Si on tourne dans Capacitor natif sans URL configurée, tenter l'IP par défaut ou l'hôte
+    // Si on tourne dans Capacitor natif sans URL configurée, utiliser l'IP Wi-Fi du PC
     if ((window as any).Capacitor?.isNativePlatform?.()) {
-      return 'http://10.0.2.2:5050/api';
+      return 'http://172.20.10.2:5050/api';
     }
   }
   return '/api';

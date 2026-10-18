@@ -24,6 +24,9 @@ dist-electron/
 client/dist/
 server/dist/
 *.zip
+*.apk
+*.db-shm
+*.db-wal
 
 # Android builds
 client/android/.gradle/

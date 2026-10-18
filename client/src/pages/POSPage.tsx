@@ -26,6 +26,8 @@ import { useToast } from '../context/ToastContext.js';
 import { useAuth } from '../context/AuthContext.js';
 import { ReceiptModal } from '../components/ReceiptModal.js';
 import { Modal } from '../components/Modal.js';
+import initialProductsData from '../data/initialProducts.json';
+import initialCategoriesData from '../data/initialCategories.json';
 
 export const POSPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -109,15 +111,36 @@ export const POSPage: React.FC = () => {
           return [];
         })
       ]);
-      setProducts(Array.isArray(prods) ? prods : []);
-      setCategories(Array.isArray(cats) ? cats : []);
+
+      if (Array.isArray(prods) && prods.length > 0) {
+        setProducts(prods);
+        try { localStorage.setItem('ms_bah_cached_products', JSON.stringify(prods)); } catch {}
+      } else {
+        const cached = localStorage.getItem('ms_bah_cached_products');
+        if (cached) {
+          try { setProducts(JSON.parse(cached)); } catch {}
+        } else if (Array.isArray(initialProductsData) && initialProductsData.length > 0) {
+          setProducts(initialProductsData as any);
+        }
+      }
+
+      if (Array.isArray(cats) && cats.length > 0) {
+        setCategories(cats);
+        try { localStorage.setItem('ms_bah_cached_categories', JSON.stringify(cats)); } catch {}
+      } else {
+        const cachedCats = localStorage.getItem('ms_bah_cached_categories');
+        if (cachedCats) {
+          try { setCategories(JSON.parse(cachedCats)); } catch {}
+        } else if (Array.isArray(initialCategoriesData) && initialCategoriesData.length > 0) {
+          setCategories(initialCategoriesData as any);
+        }
+      }
+
       setClients(Array.isArray(cls) ? cls : []);
     } catch (err: any) {
       console.error('Erreur globale POS:', err);
-      // Ne lever une alerte que si un problème bloquant réel est survenu
-      if (err?.message && !err.message.includes('401')) {
-        toast.error(err.message);
-      }
+      if (Array.isArray(initialProductsData)) setProducts(initialProductsData as any);
+      if (Array.isArray(initialCategoriesData)) setCategories(initialCategoriesData as any);
     } finally {
       setLoading(false);
     }

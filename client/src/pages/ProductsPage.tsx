@@ -23,6 +23,8 @@ import { useToast } from '../context/ToastContext.js';
 import { useAuth } from '../context/AuthContext.js';
 import { Modal } from '../components/Modal.js';
 import { ExcelImportModal } from '../components/ExcelImportModal.js';
+import initialProductsData from '../data/initialProducts.json';
+import initialCategoriesData from '../data/initialCategories.json';
 
 export const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -91,11 +93,26 @@ export const ProductsPage: React.FC = () => {
         api.getProducts({ status: 'needs_completion' }).catch(() => [])
       ]);
       setProducts(prods);
+      try { localStorage.setItem('ms_bah_cached_products', JSON.stringify(prods)); } catch {}
       setCategories(cats);
+      try { localStorage.setItem('ms_bah_cached_categories', JSON.stringify(cats)); } catch {}
       setSuppliers(sups);
       setNeedsCompletionCount(Array.isArray(needsCompProds) ? needsCompProds.length : 0);
     } catch (err: any) {
-      toast.error('Erreur chargement des produits.');
+      console.warn('Mode hors-ligne ProductsPage:', err);
+      const cachedProds = localStorage.getItem('ms_bah_cached_products');
+      if (cachedProds) {
+        try { setProducts(JSON.parse(cachedProds)); } catch {}
+      } else if (Array.isArray(initialProductsData)) {
+        setProducts(initialProductsData as any);
+      }
+
+      const cachedCats = localStorage.getItem('ms_bah_cached_categories');
+      if (cachedCats) {
+        try { setCategories(JSON.parse(cachedCats)); } catch {}
+      } else if (Array.isArray(initialCategoriesData)) {
+        setCategories(initialCategoriesData as any);
+      }
     } finally {
       setLoading(false);
     }
