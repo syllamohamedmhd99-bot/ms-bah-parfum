@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ms-bah-parfum
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build:server
+    startCommand: node server/dist/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000

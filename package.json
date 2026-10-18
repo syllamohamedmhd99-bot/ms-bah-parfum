@@ -17,7 +17,7 @@
     "start": "node server/dist/server.js",
     "start:server": "node server/dist/server.js",
     "start:electron": "electron dist-electron/main.js",
-    "postinstall": "npm --prefix server install && npm --prefix client install",
+    "postinstall": "npm --prefix server install && npm --prefix client install && npm run build:server",
     "dist:win": "npm run build:all && electron-builder --win --x64",
     "android:sync": "npm run build:client && npm --prefix client run cap:sync",
     "android:open": "npm --prefix client run cap:open",
