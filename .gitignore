@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+server/.env
+server/.env.local
+client/.env
+client/.env.local
+
+# Neon internal files
+.neon
+.neon/
+.agents/
+scratch/
+
+# Build artifacts
+release/
+dist-electron/
+client/dist/
+server/dist/
+*.zip
+
+# Android builds
+client/android/.gradle/
+client/android/build/
+client/android/app/build/
+client/android/.idea/
+client/android/local.properties
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MS BAH PARFUM</string>
+    <string name="title_activity_main">MS BAH PARFUM</string>
+    <string name="package_name">com.msbah.parfum</string>
+    <string name="custom_url_scheme">com.msbah.parfum</string>
+</resources>

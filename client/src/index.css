@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 1. Vert foncé principal */
+  --color-primary: #176B52;
+  --color-primary-hover: #125541;
+  --color-primary-active: #0E4233;
+  --color-primary-light: #EBF4F0;
+
+  /* 2. Gris très clair (Arrière-plan général) */
+  --color-bg: #F4F6F3;
+
+  /* 3. Blanc (Cartes, Tableaux, Modales) */
+  --color-surface: #FFFFFF;
+
+  /* Bordures discrètes */
+  --color-border: #E1E6E2;
+  --color-border-subtle: #EDF0ED;
+
+  /* Texte lisible */
+  --color-text-main: #1F2937;
+  --color-text-muted: #64748B;
+
+  /* 4. Orange réservé aux alertes et avertissements */
+  --color-alert: #D97732;
+  --color-alert-hover: #BF6425;
+  --color-alert-light: #FDF3EB;
+  --color-alert-border: #F6CEB4;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-main);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+}
+
+/* Micro-interaction & Animation Utilities */
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -5px rgba(23, 107, 82, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+}
+
+.btn-press {
+  transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Cartes et Panneaux Blancs */
+.boutique-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+.boutique-card:hover {
+  border-color: rgba(23, 107, 82, 0.35);
+  box-shadow: 0 4px 12px -2px rgba(23, 107, 82, 0.06);
+}
+
+/* Boutons Cohérents */
+.btn-boutique-primary {
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  font-weight: 600;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.btn-boutique-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+.btn-boutique-primary:active {
+  transform: scale(0.97);
+}
+
+.btn-boutique-secondary {
+  background-color: #FFFFFF;
+  color: var(--color-text-main);
+  font-weight: 600;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  transition: all 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.btn-boutique-secondary:hover {
+  background-color: var(--color-bg);
+  border-color: #CBD5E1;
+}
+.btn-boutique-secondary:active {
+  transform: scale(0.97);
+}
+
+.btn-boutique-alert {
+  background-color: var(--color-alert);
+  color: #FFFFFF;
+  font-weight: 600;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.btn-boutique-alert:hover {
+  background-color: var(--color-alert-hover);
+}
+.btn-boutique-alert:active {
+  transform: scale(0.97);
+}
+
+/* Badges */
+.badge-primary {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+  border: 1px solid #C2DFD4;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+}
+
+.badge-alert {
+  background-color: var(--color-alert-light);
+  color: var(--color-alert);
+  border: 1px solid var(--color-alert-border);
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+}
+
+.badge-neutral {
+  background-color: var(--color-bg);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-border);
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+}
+
+/* Modern sleek scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Print Styles for thermal ticket & A4 invoice */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 10px;
+    background: white;
+    color: black;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

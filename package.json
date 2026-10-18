@@ -1,0 +1,85 @@
+{
+  "name": "ms-bah-parfum",
+  "version": "1.0.0",
+  "description": "MS BAH PARFUM — Application Windows 11 hors ligne de gestion commerciale et parfumerie",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "seed": "npm --prefix server run seed",
+    "test": "npm --prefix server run test",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "npm --prefix client run build",
+    "build:server": "npm --prefix server run build",
+    "build:electron": ".\\server\\node_modules\\.bin\\tsc -p tsconfig.electron.json",
+    "build:all": "npm run build:client && npm run build:server && npm run build:electron",
+    "start": "node server/dist/server.js",
+    "start:server": "node server/dist/server.js",
+    "start:electron": "electron .",
+    "dist:win": "npm run build:all && electron-builder --win --x64",
+    "android:sync": "npm run build:client && npm --prefix client run cap:sync",
+    "android:open": "npm --prefix client run cap:open",
+    "android:build": "cd client/android && .\\gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.2",
+    "@neon/env": "^1.6.3",
+    "better-sqlite3": "^13.0.3",
+    "concurrently": "^9.1.2"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.msbah.parfum",
+    "productName": "MS BAH PARFUM",
+    "copyright": "Copyright © 2026 MS BAH PARFUM",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MS BAH PARFUM",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "language": "1036"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "client/dist/**/*",
+      "server/dist/**/*",
+      "server/src/schema.sql",
+      "server/node_modules/**/*",
+      "node_modules/**/*",
+      "build/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "seydou-boutique-server",
+  "version": "1.0.0",
+  "description": "Backend API pour Seydou Boutique Cosmétique & Hygiène",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc && node -e \"const fs=require('fs'); fs.copyFileSync('src/schema.sql', 'dist/schema.sql'); if(fs.existsSync('src/schema.postgresql.sql')) fs.copyFileSync('src/schema.postgresql.sql', 'dist/schema.postgresql.sql');\"",
+    "start": "node dist/server.js",
+    "seed": "tsx src/seed.ts",
+    "migrate:neon": "tsx src/scripts/migrateToNeon.ts",
+    "test": "tsx src/test-suite.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.10.7",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
