@@ -21,7 +21,6 @@ scratch/
 # Build artifacts
 release/
 dist-electron/
-client/dist/
 server/dist/
 *.zip
 *.apk
