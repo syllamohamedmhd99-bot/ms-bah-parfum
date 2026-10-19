@@ -10,6 +10,7 @@ dotenv.config();
 
 // Initialize database
 import db from './database.js';
+import { syncNeonToSqlite } from './db/index.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -160,6 +161,7 @@ export function startServer(initialPort: number = 5050): Promise<{ server: http.
         console.log(`  Mode: ${process.env.NODE_ENV || 'développement'}`);
         console.log(`  URL API: http://${host === '0.0.0.0' ? 'localhost' : host}:${actualPort}/api`);
         console.log(`=======================================================`);
+        syncNeonToSqlite().catch(e => console.error('[STARTUP] Erreur sync initial:', e));
         resolve({ server, port: actualPort });
       });
 

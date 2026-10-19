@@ -230,6 +230,75 @@ export async function initNeonSchema(): Promise<{ success: boolean; tablesCreate
   }
 }
 
+export async function syncNeonToSqlite(): Promise<void> {
+  if (!isPgActive || !pgPool) return;
+  try {
+    const pgProdCountRes = await pgPool.query('SELECT count(*) as count FROM products');
+    const pgCount = Number(pgProdCountRes.rows[0]?.count || 0);
+    const sqliteCount = (sqliteDb.prepare('SELECT count(*) as count FROM products').get() as any)?.count || 0;
+
+    console.log(`[DB-SYNC] État des bases: Neon = ${pgCount} produits, SQLite = ${sqliteCount} produits.`);
+
+    if (pgCount > 0 && sqliteCount === 0) {
+      console.log(`[DB-SYNC] Restauration des ${pgCount} produits de Neon Cloud vers SQLite local...`);
+
+      // 1. Catégories
+      const pgCats = await pgPool.query('SELECT * FROM categories ORDER BY id ASC');
+      const insertCat = sqliteDb.prepare(`
+        INSERT OR REPLACE INTO categories (id, name, description, icon, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      sqliteDb.transaction(() => {
+        for (const c of pgCats.rows) {
+          insertCat.run(c.id, c.name, c.description, c.icon, c.created_at);
+        }
+      })();
+
+      // 2. Fournisseurs
+      const pgSups = await pgPool.query('SELECT * FROM suppliers ORDER BY id ASC');
+      const insertSup = sqliteDb.prepare(`
+        INSERT OR REPLACE INTO suppliers (id, name, company_name, phone, email, address, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      sqliteDb.transaction(() => {
+        for (const s of pgSups.rows) {
+          insertSup.run(s.id, s.name, s.company_name, s.phone, s.email, s.address, s.notes, s.created_at);
+        }
+      })();
+
+      // 3. Produits
+      const pgProds = await pgPool.query('SELECT * FROM products ORDER BY id ASC');
+      const insertProd = sqliteDb.prepare(`
+        INSERT OR REPLACE INTO products (
+          id, code, name, category_id, brand, description, supplier_id,
+          purchase_price, sale_price, stock_quantity, alert_threshold,
+          expiry_date, batch_number, image_url, is_archived,
+          needs_completion, import_source, import_date, created_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?
+        )
+      `);
+      sqliteDb.transaction(() => {
+        for (const p of pgProds.rows) {
+          insertProd.run(
+            p.id, p.code, p.name, p.category_id, p.brand, p.description, p.supplier_id,
+            p.purchase_price, p.sale_price, p.stock_quantity, p.alert_threshold,
+            p.expiry_date, p.batch_number, p.image_url, p.is_archived || 0,
+            p.needs_completion || 0, p.import_source, p.import_date, p.created_at, p.updated_at
+          );
+        }
+      })();
+
+      console.log(`[DB-SYNC] ✅ Restauration terminée: ${pgCount} produits synchronisés dans SQLite!`);
+    }
+  } catch (err: any) {
+    console.error('[DB-SYNC] Erreur synchronisation Neon -> SQLite:', err.message);
+  }
+}
+
 export function isNeonActive(): boolean {
   return isPgActive;
 }
@@ -246,5 +315,6 @@ export default {
   isNeonActive,
   testPostgresConnection,
   initNeonSchema,
+  syncNeonToSqlite,
   getPgPool
 };

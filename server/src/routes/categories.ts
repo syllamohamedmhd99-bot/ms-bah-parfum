@@ -1,15 +1,31 @@
 import { Router, Response } from 'express';
+import dbAdapter, { isNeonActive } from '../db/index.js';
 import db, { logAudit } from '../database.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
 // GET /api/categories
-router.get('/', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (isNeonActive()) {
+      const categories = await dbAdapter.query(`
+        SELECT c.*, COUNT(p.id) as product_count
+        FROM categories c
+        LEFT JOIN products p ON p.category_id = c.id AND (p.is_archived = 0 OR p.is_archived IS NULL)
+        GROUP BY c.id
+        ORDER BY c.name ASC
+      `);
+      return res.json(categories);
+    }
+  } catch (pgErr) {
+    console.warn('[CATEGORIES] Erreur requête Neon, repli sur SQLite:', pgErr);
+  }
+
   const categories = db.prepare(`
     SELECT c.*, COUNT(p.id) as product_count
     FROM categories c
-    LEFT JOIN products p ON p.category_id = c.id AND p.is_archived = 0
+    LEFT JOIN products p ON p.category_id = c.id AND (p.is_archived = 0 OR p.is_archived IS NULL)
     GROUP BY c.id
     ORDER BY c.name ASC
   `).all();

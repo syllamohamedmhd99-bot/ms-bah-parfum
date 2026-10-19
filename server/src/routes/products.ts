@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import dbAdapter, { isNeonActive } from '../db/index.js';
 import db, { logAudit } from '../database.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { parseExcelWorkbook, executeImportTransaction, cleanCategoryName } from '../services/excelImport.js';
@@ -14,8 +15,61 @@ const upload = multer({
 const router = Router();
 
 // GET /api/products
-router.get('/', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const { search, category_id, status, is_archived } = req.query;
+
+  try {
+    if (isNeonActive()) {
+      let query = `
+        SELECT p.*,
+               c.name as category_name,
+               s.company_name as supplier_name,
+               (p.stock_quantity * p.purchase_price) as total_purchase_value,
+               (p.stock_quantity * p.sale_price) as total_sale_value
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN suppliers s ON p.supplier_id = s.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      let paramIdx = 1;
+
+      if (is_archived === 'true') {
+        query += ` AND p.is_archived = 1`;
+      } else {
+        query += ` AND (p.is_archived = 0 OR p.is_archived IS NULL)`;
+      }
+
+      if (category_id) {
+        query += ` AND p.category_id = $${paramIdx++}`;
+        params.push(category_id);
+      }
+
+      if (search && typeof search === 'string') {
+        query += ` AND (LOWER(p.name) LIKE $${paramIdx} OR LOWER(p.code) LIKE $${paramIdx} OR LOWER(p.brand) LIKE $${paramIdx})`;
+        paramIdx++;
+        const searchVal = `%${search.toLowerCase().trim()}%`;
+        params.push(searchVal);
+      }
+
+      if (status === 'out_of_stock') {
+        query += ` AND p.stock_quantity <= 0`;
+      } else if (status === 'low_stock') {
+        query += ` AND p.stock_quantity > 0 AND p.stock_quantity <= p.alert_threshold`;
+      } else if (status === 'expiring_soon') {
+        query += ` AND p.expiry_date IS NOT NULL AND p.expiry_date <= (CURRENT_DATE + INTERVAL '60 days')`;
+      } else if (status === 'needs_completion') {
+        query += ` AND (p.needs_completion = 1 OR p.sale_price <= 0)`;
+      }
+
+      query += ` ORDER BY p.name ASC`;
+
+      const products = await dbAdapter.query(query, params);
+      return res.json(products);
+    }
+  } catch (pgErr) {
+    console.warn('[PRODUCTS] Erreur requête Neon, repli sur SQLite:', pgErr);
+  }
 
   let query = `
     SELECT p.*,
@@ -33,7 +87,7 @@ router.get('/', authenticate, (req: AuthenticatedRequest, res: Response) => {
   if (is_archived === 'true') {
     query += ` AND p.is_archived = 1`;
   } else {
-    query += ` AND p.is_archived = 0`;
+    query += ` AND (p.is_archived = 0 OR p.is_archived IS NULL)`;
   }
 
   if (category_id) {
