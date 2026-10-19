@@ -43,18 +43,20 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health Check
-app.get('/api/health', (req, res) => {
+// Health Check (supports both /api/health and /health)
+const handleHealth = (req: express.Request, res: express.Response) => {
   res.json({
     status: 'ok',
     app: 'Seydou Boutique Cosmétique & Hygiène API',
     version: '1.0.0',
     timestamp: new Date().toISOString()
   });
-});
+};
+app.get('/api/health', handleHealth);
+app.get('/health', handleHealth);
 
-// Settings endpoint
-app.get('/api/settings', (req, res) => {
+// Settings endpoint (supports both /api/settings and /settings)
+const handleSettings = (req: express.Request, res: express.Response) => {
   try {
     const settingsRows = db.prepare('SELECT key, value FROM settings').all() as any[];
     const settingsObj: Record<string, string> = {};
@@ -65,26 +67,34 @@ app.get('/api/settings', (req, res) => {
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
-});
+};
+app.get('/api/settings', handleSettings);
+app.get('/settings', handleSettings);
+
+// Helper to register routes on both /api and root /
+const registerRoute = (prefix: string, handler: express.Router) => {
+  app.use(`/api${prefix}`, handler);
+  app.use(prefix, handler);
+};
 
 // Register API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/categories', categoriesRoutes);
-app.use('/api/products', productsRoutes);
-app.use('/api/stock', stockRoutes);
-app.use('/api/sales', salesRoutes);
-app.use('/api/transfers', transfersRoutes);
-app.use('/api/cash', cashRoutes);
-app.use('/api/finances', financesRoutes);
-app.use('/api/clients', clientsRoutes);
-app.use('/api/suppliers', suppliersRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/alerts', alertsRoutes);
-app.use('/api/reports', reportsRoutes);
-app.use('/api/audit', auditRoutes);
-app.use('/api/backup', backupRoutes);
-app.use('/api/sync', syncRoutes);
+registerRoute('/auth', authRoutes);
+registerRoute('/dashboard', dashboardRoutes);
+registerRoute('/categories', categoriesRoutes);
+registerRoute('/products', productsRoutes);
+registerRoute('/stock', stockRoutes);
+registerRoute('/sales', salesRoutes);
+registerRoute('/transfers', transfersRoutes);
+registerRoute('/cash', cashRoutes);
+registerRoute('/finances', financesRoutes);
+registerRoute('/clients', clientsRoutes);
+registerRoute('/suppliers', suppliersRoutes);
+registerRoute('/inventory', inventoryRoutes);
+registerRoute('/alerts', alertsRoutes);
+registerRoute('/reports', reportsRoutes);
+registerRoute('/audit', auditRoutes);
+registerRoute('/backup', backupRoutes);
+registerRoute('/sync', syncRoutes);
 
 // Serve Frontend SPA if built
 const clientDistCandidates = [
@@ -95,9 +105,15 @@ const clientDistCandidates = [
 const clientDistPath = clientDistCandidates.find(p => fs.existsSync(p)) || clientDistCandidates[0];
 
 if (fs.existsSync(clientDistPath)) {
+  const apiPrefixes = [
+    '/api', '/auth', '/dashboard', '/categories', '/products', '/stock',
+    '/sales', '/transfers', '/cash', '/finances', '/clients', '/suppliers',
+    '/inventory', '/alerts', '/reports', '/audit', '/backup', '/sync',
+    '/settings', '/health'
+  ];
   app.use(express.static(clientDistPath));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) return next();
+    if (apiPrefixes.some(p => req.path === p || req.path.startsWith(`${p}/`))) return next();
     res.sendFile(path.join(clientDistPath, 'index.html'));
   });
 }

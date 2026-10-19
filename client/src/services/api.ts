@@ -2,7 +2,12 @@ export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('ms_bah_api_url');
     if (saved && saved.trim() !== '') {
-      return saved.replace(/\/+$/, '');
+      let clean = saved.trim().replace(/\/+$/, '');
+      // Si l'utilisateur saisit l'URL Render sans /api, l'ajouter automatiquement
+      if (!clean.endsWith('/api') && (clean.startsWith('http://') || clean.startsWith('https://'))) {
+        clean = `${clean}/api`;
+      }
+      return clean;
     }
     // Si on tourne dans Capacitor natif sans URL configurée, utiliser l'IP Wi-Fi du PC
     if ((window as any).Capacitor?.isNativePlatform?.()) {
@@ -17,7 +22,11 @@ export function setApiBaseUrl(url: string) {
     if (!url || url.trim() === '') {
       localStorage.removeItem('ms_bah_api_url');
     } else {
-      localStorage.setItem('ms_bah_api_url', url.trim());
+      let clean = url.trim().replace(/\/+$/, '');
+      if (!clean.endsWith('/api') && (clean.startsWith('http://') || clean.startsWith('https://'))) {
+        clean = `${clean}/api`;
+      }
+      localStorage.setItem('ms_bah_api_url', clean);
     }
   }
 }
@@ -64,6 +73,12 @@ export async function apiRequest<T = any>(
 
   if (!response.ok) {
     const text = await response.text();
+    // Si la réponse est du HTML (404/502 d'Express ou proxy), extraire le texte propre
+    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+      const match = text.match(/<pre>(.*?)<\/pre>/i);
+      const cleanError = match ? match[1] : `Erreur (${response.status})`;
+      throw new Error(`Serveur : ${cleanError}`);
+    }
     throw new Error(text || `Erreur HTTP: ${response.status}`);
   }
 
