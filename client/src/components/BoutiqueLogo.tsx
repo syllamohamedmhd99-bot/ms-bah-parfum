@@ -27,26 +27,18 @@ export const BoutiqueLogo: React.FC<BoutiqueLogoProps> = ({
     xl: { title: 'text-2xl', sub: 'text-sm' }
   };
 
-  // Modern Clean Commercial Management Icon
+  // Custom Boutique Manager Emblem Logo
   const renderIcon = () => (
     <div
-      className={`relative ${iconSizes[size]} shrink-0 rounded-xl ${
-        isInSidebar ? 'bg-[#176B52] text-white border border-white/15' : 'bg-[#176B52] text-white'
-      } p-2 shadow-sm flex items-center justify-center transition-all duration-200`}
+      className={`relative ${iconSizes[size]} shrink-0 rounded-2xl overflow-hidden shadow-md flex items-center justify-center transition-all duration-200 border ${
+        isInSidebar ? 'border-white/20 ring-2 ring-emerald-500/20' : 'border-[#176B52]/20'
+      }`}
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="w-full h-full"
-      >
-        {/* Store storefront roof & structure */}
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
+      <img
+        src="/logo.png"
+        alt="MS BAH PARFUM - Boutique Manager"
+        className="w-full h-full object-cover rounded-2xl"
+      />
     </div>
   );
 
