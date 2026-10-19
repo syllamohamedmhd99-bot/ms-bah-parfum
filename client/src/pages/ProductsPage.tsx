@@ -156,16 +156,16 @@ export const ProductsPage: React.FC = () => {
   const openEditModal = (p: Product) => {
     setEditingProduct(p);
     setFormData({
-      code: p.code,
-      name: p.name,
+      code: p.code || '',
+      name: p.name || '',
       category_id: p.category_id ? String(p.category_id) : '',
       brand: p.brand || '',
       description: p.description || '',
       supplier_id: p.supplier_id ? String(p.supplier_id) : '',
-      purchase_price: String(p.purchase_price),
-      sale_price: String(p.sale_price),
-      stock_quantity: String(p.stock_quantity),
-      alert_threshold: String(p.alert_threshold),
+      purchase_price: String(p.purchase_price ?? 0),
+      sale_price: String(p.sale_price ?? 0),
+      stock_quantity: String(p.stock_quantity !== undefined && p.stock_quantity !== null ? p.stock_quantity : 0),
+      alert_threshold: String(p.alert_threshold ?? 5),
       expiry_date: p.expiry_date || '',
       batch_number: p.batch_number || '',
       image_url: p.image_url || ''
@@ -182,29 +182,45 @@ export const ProductsPage: React.FC = () => {
 
     try {
       if (editingProduct) {
-        await api.updateProduct(editingProduct.id, {
+        const payload = {
           ...formData,
-          category_id: formData.category_id ? Number(formData.category_id) : null,
-          supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null,
+          category_id: formData.category_id ? Number(formData.category_id) : undefined,
+          supplier_id: formData.supplier_id ? Number(formData.supplier_id) : undefined,
           purchase_price: Number(formData.purchase_price) || 0,
           sale_price: Number(formData.sale_price) || 0,
+          stock_quantity: Number(formData.stock_quantity) || 0,
           alert_threshold: Number(formData.alert_threshold) || 5
-        });
-        toast.success(`Produit ${formData.name} mis à jour.`);
+        };
+        await api.updateProduct(editingProduct.id, payload);
+        toast.success(`Produit "${formData.name}" mis à jour avec succès.`);
+
+        // Mise à jour optimiste immédiate dans l'affichage
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === editingProduct.id
+              ? ({
+                  ...p,
+                  ...payload,
+                  category_name: categories.find((c) => c.id === payload.category_id)?.name || p.category_name,
+                  supplier_name: suppliers.find((s) => s.id === payload.supplier_id)?.company_name || p.supplier_name
+                } as Product)
+              : p
+          )
+        );
       } else {
         await api.createProduct({
           ...formData,
-          category_id: formData.category_id ? Number(formData.category_id) : null,
-          supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null,
+          category_id: formData.category_id ? Number(formData.category_id) : undefined,
+          supplier_id: formData.supplier_id ? Number(formData.supplier_id) : undefined,
           purchase_price: Number(formData.purchase_price) || 0,
           sale_price: Number(formData.sale_price) || 0,
           stock_quantity: Number(formData.stock_quantity) || 0,
           alert_threshold: Number(formData.alert_threshold) || 5
         });
-        toast.success(`Produit ${formData.name} créé avec succès.`);
+        toast.success(`Produit "${formData.name}" créé avec succès.`);
       }
       setIsModalOpen(false);
-      loadData();
+      await loadData();
     } catch (err: any) {
       toast.error(err.message || 'Erreur enregistrement produit.');
     }
@@ -748,18 +764,31 @@ export const ProductsPage: React.FC = () => {
               />
             </div>
 
-            {!editingProduct && (
-              <div>
-                <label className="block font-bold text-[#1F2937] mb-1">Stock Initial en Rayon</label>
-                <input
-                  type="number"
-                  value={formData.stock_quantity}
-                  onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
-                  placeholder="0"
-                  className="w-full bg-[#F4F6F3] border border-[#E1E6E2] rounded-xl px-3 py-2 text-xs text-[#1F2937] focus:outline-none focus:border-[#176B52]"
-                />
+            <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-[#176B52] text-xs">
+                  {editingProduct ? '📦 Quantité en Stock Actuelle' : '📦 Stock Initial en Rayon'} *
+                </label>
+                {editingProduct && (
+                  <span className="text-[10px] bg-[#176B52] text-white px-2 py-0.5 rounded-full font-semibold">
+                    Modifiable
+                  </span>
+                )}
               </div>
-            )}
+              <input
+                type="number"
+                min="0"
+                value={formData.stock_quantity}
+                onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                placeholder="0"
+                className="w-full bg-white border border-[#176B52]/40 rounded-lg px-3 py-2 text-sm text-[#1F2937] font-bold focus:outline-none focus:border-[#176B52] shadow-sm"
+              />
+              <p className="text-[10px] text-[#176B52]/80 mt-1">
+                {editingProduct
+                  ? 'Ajustez directement le nombre d\'unités physiques disponibles en boutique.'
+                  : 'Quantité disponible au moment de l\'enregistrement.'}
+              </p>
+            </div>
 
             <div>
               <label className="block font-bold text-[#1F2937] mb-1">Seuil d'Alerte Stock Faible</label>

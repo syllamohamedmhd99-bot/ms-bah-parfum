@@ -119,34 +119,64 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
 });
 
 // GET /api/products/:id
-router.get('/:id', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const product = db.prepare(`
-    SELECT p.*, c.name as category_name, s.company_name as supplier_name
-    FROM products p
-    LEFT JOIN categories c ON p.category_id = c.id
-    LEFT JOIN suppliers s ON p.supplier_id = s.id
-    WHERE p.id = ?
-  `).get(id);
+  const isPg = isNeonActive();
 
-  if (!product) {
-    res.status(404).json({ error: 'Produit introuvable.' });
-    return;
+  try {
+    let product: any = null;
+    let movements: any[] = [];
+
+    if (isPg) {
+      product = await dbAdapter.queryOne(`
+        SELECT p.*, c.name as category_name, s.company_name as supplier_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN suppliers s ON p.supplier_id = s.id
+        WHERE p.id = $1
+      `, [id]);
+
+      if (!product) {
+        return res.status(404).json({ error: 'Produit introuvable.' });
+      }
+
+      movements = await dbAdapter.query(`
+        SELECT sm.*, u.full_name as user_name
+        FROM stock_movements sm
+        LEFT JOIN users u ON sm.user_id = u.id
+        WHERE sm.product_id = $1
+        ORDER BY sm.created_at DESC LIMIT 30
+      `, [id]);
+    } else {
+      product = db.prepare(`
+        SELECT p.*, c.name as category_name, s.company_name as supplier_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN suppliers s ON p.supplier_id = s.id
+        WHERE p.id = ?
+      `).get(id);
+
+      if (!product) {
+        return res.status(404).json({ error: 'Produit introuvable.' });
+      }
+
+      movements = db.prepare(`
+        SELECT sm.*, u.full_name as user_name
+        FROM stock_movements sm
+        LEFT JOIN users u ON sm.user_id = u.id
+        WHERE sm.product_id = ?
+        ORDER BY sm.created_at DESC LIMIT 30
+      `).all(id);
+    }
+
+    res.json({ product, movements });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
-
-  const movements = db.prepare(`
-    SELECT sm.*, u.full_name as user_name
-    FROM stock_movements sm
-    LEFT JOIN users u ON sm.user_id = u.id
-    WHERE sm.product_id = ?
-    ORDER BY sm.created_at DESC LIMIT 30
-  `).all(id);
-
-  res.json({ product, movements });
 });
 
 // POST /api/products
-router.post('/', authenticate, requireRole(['admin', 'manager', 'stock_manager']), (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authenticate, requireRole(['admin', 'manager', 'stock_manager']), async (req: AuthenticatedRequest, res: Response) => {
   const {
     code, name, category_id, brand, description, supplier_id,
     purchase_price, sale_price, stock_quantity, alert_threshold,
@@ -154,154 +184,301 @@ router.post('/', authenticate, requireRole(['admin', 'manager', 'stock_manager']
   } = req.body;
 
   if (!code || !name) {
-    res.status(400).json({ error: 'Le code référence et le nom du produit sont obligatoires.' });
-    return;
+    return res.status(400).json({ error: 'Le code référence et le nom du produit sont obligatoires.' });
   }
 
-  const existing = db.prepare('SELECT id FROM products WHERE LOWER(code) = LOWER(?)').get(code.trim());
-  if (existing) {
-    res.status(400).json({ error: 'Un produit avec cette référence ou code-barres existe déjà.' });
-    return;
+  try {
+    const isPg = isNeonActive();
+    const purchasePriceNum = Number(purchase_price) || 0;
+    const salePriceNum = Number(sale_price) || 0;
+    const stockQtyNum = Number(stock_quantity) || 0;
+    const alertThresholdNum = alert_threshold !== undefined ? Number(alert_threshold) : 5;
+    const catIdNum = category_id ? Number(category_id) : null;
+    const supIdNum = supplier_id ? Number(supplier_id) : null;
+
+    if (isPg) {
+      const existing = await dbAdapter.queryOne('SELECT id FROM products WHERE LOWER(code) = LOWER($1)', [code.trim()]);
+      if (existing) {
+        return res.status(400).json({ error: 'Un produit avec cette référence ou code-barres existe déjà.' });
+      }
+    } else {
+      const existing = db.prepare('SELECT id FROM products WHERE LOWER(code) = LOWER(?)').get(code.trim());
+      if (existing) {
+        return res.status(400).json({ error: 'Un produit avec cette référence ou code-barres existe déjà.' });
+      }
+    }
+
+    let newId: number = 0;
+
+    if (isPg) {
+      const insertRes = await dbAdapter.query(`
+        INSERT INTO products (
+          code, name, category_id, brand, description, supplier_id,
+          purchase_price, sale_price, stock_quantity, alert_threshold,
+          expiry_date, batch_number, image_url, is_archived, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, NOW(), NOW()
+        ) RETURNING id
+      `, [
+        code.trim(), name.trim(), catIdNum, brand?.trim() || null,
+        description?.trim() || null, supIdNum, purchasePriceNum,
+        salePriceNum, stockQtyNum, alertThresholdNum,
+        expiry_date || null, batch_number?.trim() || null, image_url || null
+      ]);
+      newId = Number(insertRes[0]?.id);
+
+      if (stockQtyNum > 0) {
+        await dbAdapter.query(`
+          INSERT INTO stock_movements (
+            product_id, movement_type, quantity, previous_quantity, new_quantity,
+            unit_cost, reason, user_id
+          ) VALUES ($1, 'reception', $2, 0, $3, $4, 'Stock initial lors de la création du produit', $5)
+        `, [newId, stockQtyNum, stockQtyNum, purchasePriceNum, req.user!.id]);
+      }
+    }
+
+    // Mirror to SQLite
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO products (
+          ${newId ? 'id, ' : ''}code, name, category_id, brand, description, supplier_id,
+          purchase_price, sale_price, stock_quantity, alert_threshold,
+          expiry_date, batch_number, image_url, is_archived
+        ) VALUES (${newId ? '?, ' : ''}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      `);
+      const params = [
+        code.trim(), name.trim(), catIdNum, brand?.trim() || null,
+        description?.trim() || null, supIdNum, purchasePriceNum,
+        salePriceNum, stockQtyNum, alertThresholdNum,
+        expiry_date || null, batch_number?.trim() || null, image_url || null
+      ];
+      if (newId) params.unshift(newId);
+      const resSql = stmt.run(...params);
+      if (!newId) newId = Number(resSql.lastInsertRowid);
+
+      if (stockQtyNum > 0) {
+        db.prepare(`
+          INSERT INTO stock_movements (
+            product_id, movement_type, quantity, previous_quantity, new_quantity,
+            unit_cost, reason, user_id
+          ) VALUES (?, 'reception', ?, 0, ?, ?, 'Stock initial lors de la création du produit', ?)
+        `).run(newId, stockQtyNum, stockQtyNum, purchasePriceNum, req.user!.id);
+      }
+    } catch (sqlErr) {
+      console.warn('[PRODUCTS-POST] Erreur miroir SQLite:', sqlErr);
+    }
+
+    logAudit(req.user!.id, req.user!.fullName, 'CREATE_PRODUCT', 'product', newId, `Création du produit ${name.trim()} (Code: ${code.trim()}, Stock: ${stockQtyNum})`);
+    res.status(201).json({ id: newId, message: 'Produit créé avec succès.' });
+  } catch (err: any) {
+    console.error('[PRODUCTS-POST] Erreur:', err);
+    res.status(500).json({ error: err.message || 'Erreur création produit.' });
   }
-
-  const purchasePriceNum = Number(purchase_price) || 0;
-  const salePriceNum = Number(sale_price) || 0;
-  const stockQtyNum = Number(stock_quantity) || 0;
-  const alertThresholdNum = alert_threshold !== undefined ? Number(alert_threshold) : 5;
-
-  const stmt = db.prepare(`
-    INSERT INTO products (
-      code, name, category_id, brand, description, supplier_id,
-      purchase_price, sale_price, stock_quantity, alert_threshold,
-      expiry_date, batch_number, image_url, is_archived
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-  `);
-
-  const result = stmt.run(
-    code.trim(), name.trim(), category_id || null, brand || null,
-    description || null, supplier_id || null, purchasePriceNum,
-    salePriceNum, stockQtyNum, alertThresholdNum,
-    expiry_date || null, batch_number || null, image_url || null
-  );
-
-  const newId = Number(result.lastInsertRowid);
-
-  // If initial stock > 0, log a stock movement
-  if (stockQtyNum > 0) {
-    db.prepare(`
-      INSERT INTO stock_movements (
-        product_id, movement_type, quantity, previous_quantity, new_quantity,
-        unit_cost, reason, user_id
-      ) VALUES (?, 'reception', ?, 0, ?, ?, 'Stock initial lors de la création du produit', ?)
-    `).run(newId, stockQtyNum, stockQtyNum, purchasePriceNum, req.user!.id);
-  }
-
-  logAudit(req.user!.id, req.user!.fullName, 'CREATE_PRODUCT', 'product', newId, `Création du produit ${name.trim()} (Code: ${code.trim()}, Stock: ${stockQtyNum})`);
-  res.status(201).json({ id: newId, message: 'Produit créé avec succès.' });
 });
 
 // PUT /api/products/:id
-router.put('/:id', authenticate, requireRole(['admin', 'manager', 'stock_manager']), (req: AuthenticatedRequest, res: Response) => {
+router.put('/:id', authenticate, requireRole(['admin', 'manager', 'stock_manager']), async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const {
     code, name, category_id, brand, description, supplier_id,
-    purchase_price, sale_price, alert_threshold,
+    purchase_price, sale_price, stock_quantity, alert_threshold,
     expiry_date, batch_number, image_url
   } = req.body;
 
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
-  if (!product) {
-    res.status(404).json({ error: 'Produit introuvable.' });
-    return;
-  }
+  try {
+    const isPg = isNeonActive();
+    let product: any = null;
 
-  if (code && code.trim().toLowerCase() !== product.code.toLowerCase()) {
-    const existing = db.prepare('SELECT id FROM products WHERE LOWER(code) = LOWER(?) AND id != ?').get(code.trim(), id);
-    if (existing) {
-      res.status(400).json({ error: 'Ce code produit ou référence existe déjà.' });
-      return;
+    if (isPg) {
+      product = await dbAdapter.queryOne('SELECT * FROM products WHERE id = $1', [id]);
+    } else {
+      product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
     }
+
+    if (!product) {
+      return res.status(404).json({ error: 'Produit introuvable.' });
+    }
+
+    if (code && code.trim().toLowerCase() !== (product.code || '').toLowerCase()) {
+      let existing = null;
+      if (isPg) {
+        existing = await dbAdapter.queryOne('SELECT id FROM products WHERE LOWER(code) = LOWER($1) AND id != $2', [code.trim(), id]);
+      } else {
+        existing = db.prepare('SELECT id FROM products WHERE LOWER(code) = LOWER(?) AND id != ?').get(code.trim(), id);
+      }
+      if (existing) {
+        return res.status(400).json({ error: 'Ce code produit ou référence existe déjà.' });
+      }
+    }
+
+    const updatedCode = code ? code.trim() : product.code;
+    const updatedName = name ? name.trim() : product.name;
+    const updatedCatId = category_id !== undefined ? (category_id ? Number(category_id) : null) : product.category_id;
+    const updatedBrand = brand !== undefined ? brand : product.brand;
+    const updatedDesc = description !== undefined ? description : product.description;
+    const updatedSupId = supplier_id !== undefined ? (supplier_id ? Number(supplier_id) : null) : product.supplier_id;
+    const updatedPurchasePrice = purchase_price !== undefined ? Number(purchase_price) : product.purchase_price;
+    const updatedSalePrice = sale_price !== undefined ? Number(sale_price) : product.sale_price;
+    const updatedStockQty = stock_quantity !== undefined ? Number(stock_quantity) : Number(product.stock_quantity || 0);
+    const updatedAlertThreshold = alert_threshold !== undefined ? Number(alert_threshold) : product.alert_threshold;
+    const updatedExpiry = expiry_date !== undefined ? expiry_date : product.expiry_date;
+    const updatedBatch = batch_number !== undefined ? batch_number : product.batch_number;
+    const updatedImg = image_url !== undefined ? image_url : product.image_url;
+
+    // 1. Update Neon PostgreSQL
+    if (isPg) {
+      await dbAdapter.query(`
+        UPDATE products SET
+          code = $1, name = $2, category_id = $3, brand = $4, description = $5,
+          supplier_id = $6, purchase_price = $7, sale_price = $8, stock_quantity = $9,
+          alert_threshold = $10, expiry_date = $11, batch_number = $12, image_url = $13,
+          updated_at = NOW()
+        WHERE id = $14
+      `, [
+        updatedCode, updatedName, updatedCatId, updatedBrand, updatedDesc,
+        updatedSupId, updatedPurchasePrice, updatedSalePrice, updatedStockQty,
+        updatedAlertThreshold, updatedExpiry || null, updatedBatch || null, updatedImg || null,
+        id
+      ]);
+
+      if (stock_quantity !== undefined && Number(stock_quantity) !== Number(product.stock_quantity)) {
+        const diff = Number(stock_quantity) - Number(product.stock_quantity);
+        await dbAdapter.query(`
+          INSERT INTO stock_movements (
+            product_id, movement_type, quantity, previous_quantity, new_quantity,
+            unit_cost, reason, user_id
+          ) VALUES ($1, 'inventory_adjustment', $2, $3, $4, $5, $6, $7)
+        `, [
+          id, diff, product.stock_quantity, updatedStockQty,
+          updatedPurchasePrice, 'Ajustement manuel de stock lors de la modification de l\'article', req.user?.id || 1
+        ]);
+      }
+    }
+
+    // 2. Mirror to SQLite
+    try {
+      db.prepare(`
+        UPDATE products SET
+          code = ?, name = ?, category_id = ?, brand = ?, description = ?,
+          supplier_id = ?, purchase_price = ?, sale_price = ?, stock_quantity = ?,
+          alert_threshold = ?, expiry_date = ?, batch_number = ?, image_url = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        updatedCode, updatedName, updatedCatId, updatedBrand, updatedDesc,
+        updatedSupId, updatedPurchasePrice, updatedSalePrice, updatedStockQty,
+        updatedAlertThreshold, updatedExpiry || null, updatedBatch || null, updatedImg || null,
+        id
+      );
+
+      if (stock_quantity !== undefined && Number(stock_quantity) !== Number(product.stock_quantity)) {
+        const diff = Number(stock_quantity) - Number(product.stock_quantity);
+        db.prepare(`
+          INSERT INTO stock_movements (
+            product_id, movement_type, quantity, previous_quantity, new_quantity,
+            unit_cost, reason, user_id
+          ) VALUES (?, 'inventory_adjustment', ?, ?, ?, ?, 'Ajustement manuel de stock lors de la modification de l\'article', ?)
+        `).run(id, diff, product.stock_quantity, updatedStockQty, updatedPurchasePrice, req.user?.id || 1);
+      }
+    } catch (sqlErr) {
+      console.warn('[PRODUCTS-PUT] Erreur miroir SQLite:', sqlErr);
+    }
+
+    logAudit(req.user!.id, req.user!.fullName, 'UPDATE_PRODUCT', 'product', Number(id), `Mise à jour du produit ${updatedName} (Stock: ${updatedStockQty}, Prix Vente: ${updatedSalePrice})`);
+    res.json({ message: 'Produit mis à jour avec succès.', product: { id, name: updatedName, stock_quantity: updatedStockQty } });
+  } catch (err: any) {
+    console.error('[PRODUCTS-PUT] Erreur:', err);
+    res.status(500).json({ error: err.message || 'Erreur lors de la mise à jour du produit.' });
   }
-
-  db.prepare(`
-    UPDATE products SET
-      code = ?, name = ?, category_id = ?, brand = ?, description = ?,
-      supplier_id = ?, purchase_price = ?, sale_price = ?, alert_threshold = ?,
-      expiry_date = ?, batch_number = ?, image_url = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(
-    code ? code.trim() : product.code,
-    name ? name.trim() : product.name,
-    category_id !== undefined ? category_id : product.category_id,
-    brand !== undefined ? brand : product.brand,
-    description !== undefined ? description : product.description,
-    supplier_id !== undefined ? supplier_id : product.supplier_id,
-    purchase_price !== undefined ? Number(purchase_price) : product.purchase_price,
-    sale_price !== undefined ? Number(sale_price) : product.sale_price,
-    alert_threshold !== undefined ? Number(alert_threshold) : product.alert_threshold,
-    expiry_date !== undefined ? expiry_date : product.expiry_date,
-    batch_number !== undefined ? batch_number : product.batch_number,
-    image_url !== undefined ? image_url : product.image_url,
-    id
-  );
-
-  logAudit(req.user!.id, req.user!.fullName, 'UPDATE_PRODUCT', 'product', Number(id), `Mise à jour du produit ${name || product.name}`);
-  res.json({ message: 'Produit mis à jour avec succès.' });
 });
 
 // PATCH /api/products/:id/archive
-router.patch('/:id/archive', authenticate, requireRole(['admin', 'manager']), (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:id/archive', authenticate, requireRole(['admin', 'manager']), async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
-  if (!product) {
-    res.status(404).json({ error: 'Produit introuvable.' });
-    return;
+  try {
+    const isPg = isNeonActive();
+    let product: any = null;
+
+    if (isPg) {
+      product = await dbAdapter.queryOne('SELECT * FROM products WHERE id = $1', [id]);
+    } else {
+      product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
+    }
+
+    if (!product) {
+      return res.status(404).json({ error: 'Produit introuvable.' });
+    }
+
+    const newStatus = product.is_archived === 1 ? 0 : 1;
+
+    if (isPg) {
+      await dbAdapter.query('UPDATE products SET is_archived = $1, updated_at = NOW() WHERE id = $2', [newStatus, id]);
+    }
+    try {
+      db.prepare('UPDATE products SET is_archived = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newStatus, id);
+    } catch (e) {}
+
+    const actionText = newStatus === 1 ? 'Archivage' : 'Désarchivage';
+    logAudit(req.user!.id, req.user!.fullName, 'ARCHIVE_PRODUCT', 'product', Number(id), `${actionText} du produit ${product.name}`);
+    res.json({ message: `Produit ${newStatus === 1 ? 'archivé' : 'restauré'} avec succès.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
-
-  const newStatus = product.is_archived === 1 ? 0 : 1;
-  db.prepare('UPDATE products SET is_archived = ? WHERE id = ?').run(newStatus, id);
-
-  const actionText = newStatus === 1 ? 'Archivage' : 'Désarchivage';
-  logAudit(req.user!.id, req.user!.fullName, 'ARCHIVE_PRODUCT', 'product', Number(id), `${actionText} du produit ${product.name}`);
-  res.json({ message: `Produit ${newStatus === 1 ? 'archivé' : 'restauré'} avec succès.` });
 });
 
 // DELETE /api/products/:id (Suppression définitive d'un article)
-router.delete('/:id', authenticate, requireRole(['admin', 'manager', 'stock_manager']), (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', authenticate, requireRole(['admin', 'manager', 'stock_manager']), async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
-  if (!product) {
-    res.status(404).json({ error: 'Produit introuvable.' });
-    return;
+  try {
+    const isPg = isNeonActive();
+    let product: any = null;
+
+    if (isPg) {
+      product = await dbAdapter.queryOne('SELECT * FROM products WHERE id = $1', [id]);
+    } else {
+      product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
+    }
+
+    if (!product) {
+      return res.status(404).json({ error: 'Produit introuvable.' });
+    }
+
+    // Check if product was used in sales
+    let salesCount = 0;
+    if (isPg) {
+      const sRes = await dbAdapter.query('SELECT COUNT(*) as count FROM sale_items WHERE product_id = $1', [id]);
+      salesCount = Number(sRes[0]?.count || 0);
+    } else {
+      salesCount = (db.prepare('SELECT COUNT(*) as count FROM sale_items WHERE product_id = ?').get(id) as any)?.count || 0;
+    }
+
+    if (salesCount > 0) {
+      return res.status(400).json({
+        error: `Impossible de supprimer définitivement "${product.name}" car il figure sur ${salesCount} ticket(s) de vente. Vous pouvez l'archiver pour le masquer du catalogue.`
+      });
+    }
+
+    // Delete in Neon
+    if (isPg) {
+      await dbAdapter.query('DELETE FROM stock_movements WHERE product_id = $1', [id]);
+      await dbAdapter.query('DELETE FROM inventory_audit_items WHERE product_id = $1', [id]);
+      await dbAdapter.query('DELETE FROM products WHERE id = $1', [id]);
+    }
+
+    // Delete in SQLite
+    try {
+      db.transaction(() => {
+        db.prepare('DELETE FROM stock_movements WHERE product_id = ?').run(id);
+        db.prepare('DELETE FROM inventory_audit_items WHERE product_id = ?').run(id);
+        db.prepare('DELETE FROM products WHERE id = ?').run(id);
+      })();
+    } catch (e) {}
+
+    logAudit(req.user!.id, req.user!.fullName, 'DELETE_PRODUCT', 'product', Number(id), `Suppression définitive du produit: ${product.name} (Code: ${product.code})`);
+    res.json({ message: `Produit "${product.name}" supprimé avec succès.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
-
-  // Check if product was used in sales
-  const salesCount = (db.prepare('SELECT COUNT(*) as count FROM sale_items WHERE product_id = ?').get(id) as any)?.count || 0;
-  if (salesCount > 0) {
-    res.status(400).json({
-      error: `Impossible de supprimer définitivement "${product.name}" car il figure sur ${salesCount} ticket(s) de vente. Vous pouvez l'archiver pour le masquer du catalogue.`
-    });
-    return;
-  }
-
-  // Check if product was used in supplier purchases
-  const purchasesCount = (db.prepare('SELECT COUNT(*) as count FROM purchase_items WHERE product_id = ?').get(id) as any)?.count || 0;
-  if (purchasesCount > 0) {
-    res.status(400).json({
-      error: `Impossible de supprimer définitivement "${product.name}" car il figure sur ${purchasesCount} facture(s) d'achat. Vous pouvez l'archiver à la place.`
-    });
-    return;
-  }
-
-  // Delete initial/unlinked stock movements & inventory audit items for this product
-  db.transaction(() => {
-    db.prepare('DELETE FROM stock_movements WHERE product_id = ?').run(id);
-    db.prepare('DELETE FROM inventory_audit_items WHERE product_id = ?').run(id);
-    db.prepare('DELETE FROM products WHERE id = ?').run(id);
-  })();
-
-  logAudit(req.user!.id, req.user!.fullName, 'DELETE_PRODUCT', 'product', Number(id), `Suppression définitive du produit: ${product.name} (Code: ${product.code})`);
-  res.json({ message: `Produit "${product.name}" supprimé avec succès.` });
 });
 
 // GET /api/products/import-excel/default-file
